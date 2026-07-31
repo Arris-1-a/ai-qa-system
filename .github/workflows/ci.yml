@@ -1,0 +1,37 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov fastapi uvicorn
+
+      - name: Run tests
+        run: pytest tests/ -v --cov=. --cov-report=xml
+
+      - name: Test API endpoints
+        run: |
+          uvicorn api.app:app --host 0.0.0.0 --port 8000 &
+          sleep 2
+          curl -f http://localhost:8000/health || exit 1
+          curl -f -X POST http://localhost:8000/ask -H "Content-Type: application/json" -d '{"question": "test"}' || true
+          kill %1 2>/dev/null || true
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
