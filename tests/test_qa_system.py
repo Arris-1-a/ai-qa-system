@@ -7,7 +7,7 @@ from main import QASystem, AnswerResult, VectorStore, ResponseGenerator
 
 class TestVectorStore:
     def test_add_and_search(self):
-        store = VectorStore(dimension=10)
+        store = VectorStore(dimension=32)
         docs = ["Machine learning is a subset of AI.",
                 "Deep learning uses neural networks."]
         ids = store.add(docs)
@@ -28,6 +28,12 @@ class TestVectorStore:
         assert len(store.documents) == 1
         store.clear()
         assert len(store.documents) == 0
+
+    def test_count(self):
+        store = VectorStore()
+        assert store.count() == 0
+        store.add(["doc1", "doc2"])
+        assert store.count() == 2
 
 
 class TestQASystem:

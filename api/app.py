@@ -1,4 +1,4 @@
-"""RESTful API for the AI Question Answering System."""
+"""FastAPI service for the AI Question Answering System."""
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,7 +51,7 @@ class StatsResponse(BaseModel):
 async def ask_question(request: AskRequest):
     global qa_system
     if request.top_k != 5:
-        qa_system.config['search']['top_k'] = request.top_k
+        qa_system.search_top_k = request.top_k
 
     if not qa_system.is_initialized:
         await qa_system.initialize()
@@ -65,8 +65,11 @@ async def ask_question(request: AskRequest):
         answer=result.answer,
         confidence=result.confidence,
         sources=[
-            {"id": s["id"], "content": s["content"][:300] + ("..." if len(s["content"]) > 300 else ""),
-             "score": s.get("score", 0)}
+            {
+                "id": s["id"],
+                "content": s["content"][:300] + ("..." if len(s["content"]) > 300 else ""),
+                "score": s.get("score", 0)
+            }
             for s in result.source_documents
         ],
         query_time_ms=result.query_time_ms,

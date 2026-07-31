@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
 AI Question Answering System - Knowledge-based Q&A engine
-Supports vector search, multi-turn conversation, and API service
+Supports vector search, multi-turn conversation, and REST API
 """
 
 import asyncio
-import json
 import logging
 import uuid
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-import numpy as np
-import yaml
+
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler('logs/qa.log'), logging.StreamHandler()]
+    handlers=[logging.FileHandler(LOG_DIR / "qa.log"), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ class AnswerResult:
 
 
 class VectorStore:
-    """Lightweight vector store for semantic search."""
+    """Lightweight vector store using hash-based embeddings."""
 
-    def __init__(self, dimension: int = 768):
+    def __init__(self, dimension: int = 128):
         self.dimension = dimension
         self.documents: List[Dict] = []
         self.vectors: List[List[float]] = []
@@ -52,9 +52,7 @@ class VectorStore:
         doc_ids = ids or [f"doc_{i}" for i in range(len(texts))]
         for text, did in zip(texts, doc_ids):
             embedding = self._embed(text)
-            self.documents.append({
-                'id': did, 'text': text, 'embedding': embedding
-            })
+            self.documents.append({'id': did, 'text': text, 'embedding': embedding})
             self.vectors.append(embedding)
         return doc_ids
 
@@ -80,15 +78,21 @@ class VectorStore:
         return results
 
     def _embed(self, text: str) -> List[float]:
-        """Simple hash-based embedding for demo purposes.
-        In production, use sentence-transformers or similar."""
-        np.random.seed(abs(hash(text)) % (2**32))
-        vec = np.random.randn(self.dimension).tolist()
+        """Generate deterministic embedding from text content."""
+        import hashlib
+        words = text.lower().split()
+        h = hashlib.md5(text.encode()).hexdigest()
+        values = []
+        seed = int(h[:8], 16)
+        state = seed
+        for _ in range(self.dimension):
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            values.append((state % 10000) / 5000.0 - 1.0)
         # Normalize
-        norm = np.linalg.norm(vec)
+        norm = sum(v * v for v in values) ** 0.5
         if norm > 0:
-            vec = [v / norm for v in vec]
-        return vec
+            values = [v / norm for v in values]
+        return values
 
     @staticmethod
     def _cosine_similarity(a: List[float], b: List[float]) -> float:
@@ -101,18 +105,12 @@ class VectorStore:
         self.documents.clear()
         self.vectors.clear()
 
+    def count(self) -> int:
+        return len(self.documents)
+
 
 class ResponseGenerator:
     """Generates natural language responses based on retrieved context."""
-
-    PROMPT_TEMPLATE = """Please answer the following question based on the provided context.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer (cite sources when possible):"""
 
     FALLBACK_ANSWER = (
         "I'm sorry, I don't have enough information to answer this question. "
@@ -121,17 +119,13 @@ Answer (cite sources when possible):"""
 
     def generate(self, context_docs: List[Dict], question: str) -> AnswerResult:
         context_text = "\n\n".join([
-            f"[Source: {doc['id']}] {doc['content'][:2000]}"
-            for doc in context_docs
+            f"[Source {i+1}] {doc['content'][:2000]}"
+            for i, doc in enumerate(context_docs)
         ])
 
-        prompt = self.PROMPT_TEMPLATE.format(
-            context=context_text, question=question
-        )
+        answer = self._generate_response(question, context_text)
 
-        answer = self._generate_response(prompt, question, context_text)
-
-        avg_confidence = np.mean([d.get('score', 0.5) for d in context_docs]) if context_docs else 0.3
+        avg_confidence = sum(d.get('score', 0.5) for d in context_docs) / len(context_docs) if context_docs else 0.3
         avg_confidence = min(1.0, max(0.0, avg_confidence))
 
         return AnswerResult(
@@ -142,27 +136,30 @@ Answer (cite sources when possible):"""
             timestamp=datetime.now().isoformat()
         )
 
-    def _generate_response(self, prompt: str, question: str, context: str) -> str:
-        """In production, call OpenAI/GPT-4 API here.
-        For demo, provide context-aware response."""
-        keywords_in_question = question.lower().split()
-        relevant_context = []
+    def _generate_response(self, question: str, context: str) -> str:
+        """Generate a context-aware response."""
+        keywords = [kw for kw in question.lower().split() if len(kw) > 2]
+        relevant_paras = []
 
-        for kw in keywords_in_question:
-            if len(kw) > 2:
-                matches = [c for c in context.split('. ') if kw in c.lower()]
-                relevant_context.extend(matches[:2])
+        for kw in keywords:
+            matches = [p.strip() for p in context.replace('\n\n', '. ').split('. ')
+                       if kw in p.lower() and len(p.strip()) > 20]
+            relevant_paras.extend(matches[:2])
 
-        unique_relevant = list(dict.fromkeys(relevant_context))[:3]
+        unique_relevant = list(dict.fromkeys(relevant_paras))[:3]
 
         if unique_relevant:
             return (
-                f"Based on the available documents:\n\n"
+                "Based on the available documents:\n\n"
                 + "\n\n".join(f"- {p}" for p in unique_relevant)
-                + "\n\nPlease refer to the source documents for more details."
+                + "\n\nFor more details, please refer to the source documents."
             )
 
-        return self.FALLBACK_ANSWER
+        return (
+            f"I couldn't find specific information about '{question}' "
+            f"in the current knowledge base. Try asking about topics that might be covered "
+            f"in your documents, or add more relevant content to the knowledge base."
+        )
 
 
 class ConversationManager:
@@ -183,8 +180,10 @@ class ConversationManager:
         self.conversations[conv_id].append(QueryContext(question=question))
         if bot_answer:
             self.conversations[conv_id].append(QueryContext(question=bot_answer))
-        if len(self.conversations[conv_id]) > self.max_history * 2:
-            self.conversations[conv_id] = self.conversations[conv_id][-self.max_history * 2:]
+        # Keep only last N rounds (each round = 2 entries)
+        max_entries = self.max_history * 2
+        if len(self.conversations[conv_id]) > max_entries:
+            self.conversations[conv_id] = self.conversations[conv_id][-max_entries:]
 
     def get_history(self, conv_id: str) -> List[str]:
         if conv_id not in self.conversations:
@@ -196,7 +195,8 @@ class ConversationManager:
         if not history:
             return current_q
         recent = history[-4:]
-        return "\n\nPrevious conversation:\n" + "\n".join(recent) + f"\n\nCurrent question: {current_q}"
+        return "\n\nPrevious conversation:\n" + "\n".join(f"Q: {h}" for h in recent[:-1:2]) + \
+               f"\n\nCurrent question: {current_q}"
 
     def clear(self, conv_id: str) -> bool:
         if conv_id in self.conversations:
@@ -204,32 +204,21 @@ class ConversationManager:
             return True
         return False
 
+    def get_conversation_count(self) -> int:
+        return len(self.conversations)
+
 
 class QASystem:
     """Main QA system combining search, generation, and conversation."""
 
-    def __init__(self, config_path: str = None):
-        self.config = self._load_config(config_path)
+    def __init__(self):
         self.vector_store = VectorStore()
         self.generator = ResponseGenerator()
-        self.conversation_manager = ConversationManager(
-            max_history=self.config.get('conversation', {}).get('max_history', 5)
-        )
+        self.conversation_manager = ConversationManager(max_history=5)
         self.is_initialized = False
-
-    def _load_config(self, config_path: str) -> Dict:
-        defaults = {
-            'search': {'top_k': 5},
-            'conversation': {'max_history': 5},
-            'output': {'format': 'json'}
-        }
-        if config_path and Path(config_path).exists():
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f) or defaults
-        return defaults
+        self.search_top_k = 5
 
     async def initialize(self) -> None:
-        await asyncio.sleep(0)  # Placeholder for async init
         self.is_initialized = True
         logger.info("QA System initialized")
 
@@ -245,7 +234,7 @@ class QASystem:
             conversation_id, question
         )
 
-        docs = self.vector_store.search(full_question, top_k=self.config['search']['top_k'])
+        docs = self.vector_store.search(full_question, top_k=self.search_top_k)
 
         result = self.generator.generate(docs, full_question)
         result.conversation_id = conversation_id
@@ -257,21 +246,21 @@ class QASystem:
 
     def add_documents(self, texts: List[str]) -> List[str]:
         ids = self.vector_store.add(texts)
-        logger.info(f"Added {len(texts)} documents to knowledge base")
+        logger.info(f"Added {len(texts)} documents to knowledge base (total: {self.vector_store.count()})")
         return ids
 
     def get_stats(self) -> Dict:
         return {
-            'document_count': len(self.vector_store.documents),
+            'document_count': self.vector_store.count(),
             'initialized': self.is_initialized,
-            'active_conversations': len(self.conversation_manager.conversations)
+            'active_conversations': self.conversation_manager.get_conversation_count()
         }
 
 
 def interactive_mode(qa: QASystem) -> None:
-    print("\n" + "=" * 50)
-    print("🤖 AI Question Answering System")
-    print("=" * 50)
+    print("\n" + "=" * 55)
+    print("AI Question Answering System")
+    print("=" * 55)
     print("Type 'help' for commands, 'quit' to exit\n")
 
     conv_id = None
@@ -282,19 +271,19 @@ def interactive_mode(qa: QASystem) -> None:
             if not user_input:
                 continue
 
-            if user_input.lower() == 'quit' or user_input.lower() == 'exit':
+            if user_input.lower() in ('quit', 'exit'):
                 break
 
             if user_input.lower() == 'help':
                 print("""
 Commands:
-  help          Show this help
-  quit          Exit the program
-  add <file>    Add document from file to knowledge base
-  clear         Clear current conversation
-  new           Start a new conversation
-  stats         Show system statistics
-  load <file>   Load JSON knowledge base
+  help         Show this help
+  quit         Exit the program
+  add <file>   Add document from file to knowledge base
+  clear        Clear current conversation
+  new          Start a new conversation
+  stats        Show system statistics
+  list-docs    List all documents in knowledge base
 """)
                 continue
 
@@ -302,18 +291,31 @@ Commands:
                 if conv_id:
                     qa.conversation_manager.clear(conv_id)
                     conv_id = None
-                    print("✅ Conversation cleared\n")
+                    print("Conversation cleared\n")
                 continue
 
             if user_input.lower() == 'new':
                 conv_id = qa.conversation_manager.create()
-                print(f"✅ New conversation started\n")
+                print(f"New conversation started\n")
                 continue
 
             if user_input.lower() == 'stats':
                 stats = qa.get_stats()
-                print(f"\n📊 Stats: docs={stats['document_count']}, "
+                print(f"\nStats: docs={stats['document_count']}, "
                       f"conversations={stats['active_conversations']}\n")
+                continue
+
+            if user_input.lower() == 'list-docs':
+                count = qa.vector_store.count()
+                if count == 0:
+                    print("\nNo documents in knowledge base. Use 'add <file>' to add one.\n")
+                else:
+                    print(f"\n{count} document(s) in knowledge base:\n")
+                    for i, doc in enumerate(qa.vector_store.documents[:10]):
+                        preview = doc['text'][:80].replace('\n', ' ')
+                        print(f"  [{i+1}] {doc['id']}: {preview}...")
+                    if count > 10:
+                        print(f"  ... and {count - 10} more")
                 continue
 
             if user_input.lower().startswith('add '):
@@ -323,31 +325,29 @@ Commands:
                         content = f.read().strip()
                     if content:
                         qa.add_documents([content])
-                        print(f"✅ Added: {filepath}")
+                        print(f"Added: {filepath}")
                     else:
-                        print("⚠️ File is empty\n")
+                        print("File is empty\n")
                 except FileNotFoundError:
-                    print(f"❌ File not found: {filepath}\n")
+                    print(f"File not found: {filepath}\n")
                 continue
 
             # Normal question
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(
-                qa.ask(user_input, conv_id)
-            )
+            result = loop.run_until_complete(qa.ask(user_input, conv_id))
             loop.close()
 
             print(f"\nAI> {result.answer}")
-            print(f"   💡 Confidence: {result.confidence:.2%} "
-                  f"| Time: {result.query_time_ms}ms "
-                  f"| Sources: {len(result.source_documents)}\n")
+            print(f"   Confidence: {result.confidence:.2%} | "
+                  f"Time: {result.query_time_ms}ms | "
+                  f"Sources: {len(result.source_documents)}\n")
 
         except KeyboardInterrupt:
             print("\n\nGoodbye!")
             break
         except Exception as e:
-            print(f"\n❌ Error: {e}\n")
+            print(f"\nError: {e}\n")
             logger.error(f"Interactive error: {e}")
 
 
@@ -355,13 +355,13 @@ def main():
     import sys
 
     qa = QASystem()
+    asyncio.run(qa.initialize())
 
     if len(sys.argv) > 1 and sys.argv[1] == "--api":
         print("Starting API server... Use: uvicorn api.app:app --reload")
         print("Then: curl -X POST http://localhost:8000/ask -H 'Content-Type: application/json' -d '{\"question\": \"...\"}'")
         return
 
-    asyncio.run(qa.initialize())
     interactive_mode(qa)
 
 
