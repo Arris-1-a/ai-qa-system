@@ -15,7 +15,7 @@ class TestVectorStore:
 
         results = store.search("What is AI?", top_k=1)
         assert len(results) == 1
-        assert results[0]['score'] > 0
+        assert results[0].score > 0
 
     def test_empty_search(self):
         store = VectorStore()

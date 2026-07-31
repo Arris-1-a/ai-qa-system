@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
@@ -356,6 +357,7 @@ Cite your sources when possible."""
             sources=context_docs,
             confidence=float(confidence),
             query_time_ms=max(elapsed_ms, 1),
+            timestamp=datetime.now().isoformat(),
             followup_suggestions=followups[:3]
         )
 
@@ -510,6 +512,16 @@ class ConversationManager:
             state.contexts = state.contexts[-self.max_history:]
 
         return True
+
+    def add_turn(self, conv_id: str, question: str, answer: str,
+                 sources: Optional[List[Dict]] = None, confidence: float = 0.0) -> bool:
+        """Add a question-answer turn to a conversation (convenience wrapper)."""
+        return self.add_message(conv_id, question, answer, sources or [], confidence)
+
+    def get_history(self, conv_id: str) -> List[str]:
+        """Get question history for a conversation."""
+        state = self.conversations.get(conv_id)
+        return list(state.questions) if state else []
 
     def get_context(self, conv_id: str, n_turns: int = None) -> str:
         """Get conversation context for augmenting queries."""
@@ -674,7 +686,7 @@ class QASystem:
             'initialized': self.is_initialized,
             'conversations': self.conversation_manager.get_stats(),
             'vector_store': self.vector_store.get_stats(),
-            'metrics': self.metrics.get_all_stats()
+            'metrics': self.metrics.get_stats()
         }
 
     def export_knowledge_base(self, output_path: str) -> str:
