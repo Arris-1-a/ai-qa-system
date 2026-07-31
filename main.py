@@ -27,13 +27,37 @@ try:
     from ai_tools.performance import MetricCollector, timeit
     from ai_tools.exceptions import AIError, DataError, ValidationError
 except ImportError:
-    # Fallback if ai-tools not in path
-    logger = logging.getLogger(__name__)
+    # Fallback to standard library
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    def setup_logger(name, log_file=None, level=logging.INFO, console_output=True):
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        if not logger.handlers:
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+            if log_file:
+                log_path = Path(log_file)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                file_handler = RotatingFileHandler(log_path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
+                file_handler.setFormatter(formatter)
+                logger.addHandler(file_handler)
+            if console_output:
+                console_handler = logging.StreamHandler()
+                console_handler.setFormatter(formatter)
+                logger.addHandler(console_handler)
+        return logger
+
     class MetricCollector:
         def __init__(self, *args, **kwargs): pass
         def record(self, *args, **kwargs): pass
         def increment(self, *args, **kwargs): pass
         def get_stats(self, *args, **kwargs): return {}
+
+    def timeit(func): return func
+    AIError = Exception
+    DataError = Exception
+    ValidationError = Exception
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
