@@ -1,0 +1,12 @@
+# AI Question Answering System Configuration
+search:
+  top_k: 5              # Number of relevant documents to retrieve
+  threshold: 0.3        # Minimum similarity score
+
+conversation:
+  max_history: 5        # Maximum conversation turns to remember
+  session_timeout_minutes: 30
+
+output:
+  format: json
+  include_sources: true
