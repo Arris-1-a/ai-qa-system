@@ -1010,3 +1010,68 @@ class EmbeddingService:
         norm2 = sum(b * b for b in vec2) ** 0.5
         
         return dot / (norm1 * norm2) if norm1 > 0 and norm2 > 0 else 0.0
+
+
+class VideoAnalyzer:
+    """Video analysis using frame extraction."""
+    
+    def __init__(self, recognizer: ImageRecognizer):
+        self.recognizer = recognizer
+        self.frame_interval = 30
+    
+    def analyze(self, video_path: str) -> List[Dict]:
+        """Analyze video and return frame-by-frame results."""
+        import cv2
+        cap = cv2.VideoCapture(video_path)
+        
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video: {video_path}")
+        
+        results = []
+        frame_count = 0
+        analyzed_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            if frame_count % self.frame_interval == 0:
+                result = self.recognizer.analyze_frame(frame)
+                results.append({
+                    'frame': frame_count,
+                    'detections': len(result.detections),
+                    'faces': result.face_count,
+                    'classifications': result.classifications[:3]
+                })
+                analyzed_count += 1
+        
+        cap.release()
+        logger.info(f"Video analysis: {analyzed_count} frames from {frame_count} total")
+        return results
+    
+    def detect_faces_in_video(self, video_path: str) -> List[Dict]:
+        """Detect faces in video frames."""
+        import cv2
+        cap = cv2.VideoCapture(video_path)
+        
+        faces_results = []
+        frame_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            if frame_count % 10 == 0:
+                faces = self.recognizer.face_detector.detect(frame)
+                faces_results.append({
+                    'frame': frame_count,
+                    'face_count': len(faces),
+                    'faces': [f.to_dict() for f in faces]
+                })
+        
+        cap.release()
+        return faces_results
