@@ -94,3 +94,30 @@ class TestKnowledgeManager:
         qa.add_documents(["Document 1", "Document 2"])
         docs = qa.vector_store.documents
         assert len([d for d in docs if d is not None]) == 2
+
+
+class TestConversationHistory:
+    def test_save_and_load(self, qa):
+        """Test saving and loading conversation history."""
+        import tempfile
+        import os
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history = ConversationHistory(tmpdir)
+            
+            # Save
+            conv_id = qa.conversation_manager.create()
+            history.save(conv_id, [{"question": "Hello", "answer": "Hi"}])
+            
+            # Load
+            loaded = history.load(conv_id)
+            assert loaded is not None
+            assert loaded['conversation_id'] == conv_id
+            
+            # List
+            conversations = history.list_conversations()
+            assert len(conversations) == 1
+            
+            # Delete
+            assert history.delete(conv_id)
+            assert history.load(conv_id) is None
