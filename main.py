@@ -1075,3 +1075,45 @@ class VideoAnalyzer:
         
         cap.release()
         return faces_results
+
+
+class ReportGenerator:
+    """Generate processing reports."""
+    
+    def __init__(self, processor: DocumentProcessor):
+        self.processor = processor
+    
+    def generate_html_report(self, output_path: str) -> str:
+        """Generate HTML report."""
+        html = """<!DOCTYPE html>
+<html>
+<head><title>Document Processing Report</title></head>
+<body>
+<h1>AI Document Processing Report</h1>
+"""
+        for result in self.processor.results:
+            html += f"""
+<div class="result">
+<h2>{result.filename}</h2>
+<p>Type: {result.doc_type}</p>
+<p>Words: {result.metadata.word_count}</p>
+<p>Entities: {len(result.entities)}</p>
+<p>Summary: {result.summary[:200]}...</p>
+</div>
+"""
+        html += "</body></html>"
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        
+        logger.info(f"HTML report saved to: {output_path}")
+        return output_path
+    
+    def generate_statistics(self) -> Dict:
+        """Generate processing statistics."""
+        return {
+            'total_documents': len(self.processor.results),
+            'total_words': sum(r.metadata.word_count for r in self.processor.results),
+            'total_entities': sum(len(r.entities) for r in self.processor.results),
+            'avg_reading_time': sum(r.metadata.reading_time_minutes for r in self.processor.results) / max(1, len(self.processor.results))
+        }
