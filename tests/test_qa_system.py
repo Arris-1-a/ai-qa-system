@@ -68,3 +68,29 @@ class TestQASystem:
         r1 = asyncio.run(qa.ask("What is Python?", conv_id))
         r2 = asyncio.run(qa.ask("Is it a snake?", conv_id))
         assert r1.conversation_id == r2.conversation_id
+
+
+class TestKnowledgeManager:
+    def test_add_from_file(self, qa):
+        """Test adding documents from file."""
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("Test document content for knowledge base.")
+            filepath = f.name
+        
+        km = KnowledgeManager(qa)
+        count = km.add_from_file(filepath)
+        assert count == 1
+        
+        os.unlink(filepath)
+    
+    def test_get_document_count(self, qa):
+        """Test getting document count."""
+        qa.add_documents(["Doc 1", "Doc 2", "Doc 3"])
+        assert qa.vector_store.count() == 3
+    
+    def test_list_documents(self, qa):
+        """Test listing documents."""
+        qa.add_documents(["Document 1", "Document 2"])
+        docs = qa.vector_store.documents
+        assert len([d for d in docs if d is not None]) == 2

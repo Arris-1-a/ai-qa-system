@@ -894,3 +894,53 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+class KnowledgeManager:
+    """Manage knowledge base operations."""
+    
+    def __init__(self, qa_system: QASystem):
+        self.qa = qa_system
+    
+    def add_from_file(self, filepath: str) -> int:
+        """Add documents from a file."""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            if content:
+                self.qa.add_documents([content])
+                return 1
+        except Exception as e:
+            logger.error(f"Failed to add {filepath}: {e}")
+        return 0
+    
+    def add_from_directory(self, dirpath: str) -> int:
+        """Add documents from a directory."""
+        count = 0
+        for ext in ['.txt', '.md', '.csv']:
+            for file in Path(dirpath).glob(f"*{ext}"):
+                try:
+                    with open(file, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if content:
+                        self.qa.add_documents([content])
+                        count += 1
+                except Exception as e:
+                    logger.warning(f"Skipped {file}: {e}")
+        return count
+    
+    def get_document_count(self) -> int:
+        """Get total number of documents."""
+        return self.qa.vector_store.count()
+    
+    def list_documents(self, limit: int = 10) -> List[Dict]:
+        """List recent documents."""
+        docs = []
+        for doc in self.qa.vector_store.documents[-limit:]:
+            if doc:
+                docs.append({
+                    'id': doc.id,
+                    'content_preview': doc.content[:100] + '...',
+                    'added_at': doc.added_at
+                })
+        return docs
