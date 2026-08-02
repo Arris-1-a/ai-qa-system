@@ -1117,3 +1117,42 @@ class ReportGenerator:
             'total_entities': sum(len(r.entities) for r in self.processor.results),
             'avg_reading_time': sum(r.metadata.reading_time_minutes for r in self.processor.results) / max(1, len(self.processor.results))
         }
+
+
+class ConversationHistory:
+    """Manage conversation history with persistence."""
+    
+    def __init__(self, storage_dir: str = "conversations"):
+        self.storage_dir = Path(storage_dir)
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+    
+    def save(self, conversation_id: str, history: List[Dict]) -> bool:
+        """Save conversation history to file."""
+        filepath = self.storage_dir / f"{conversation_id}.json"
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump({
+                'conversation_id': conversation_id,
+                'history': history,
+                'saved_at': datetime.now().isoformat()
+            }, f, indent=2, ensure_ascii=False)
+        return True
+    
+    def load(self, conversation_id: str) -> Optional[Dict]:
+        """Load conversation history from file."""
+        filepath = self.storage_dir / f"{conversation_id}.json"
+        if filepath.exists():
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    
+    def list_conversations(self) -> List[str]:
+        """List all saved conversation IDs."""
+        return [f.stem for f in self.storage_dir.glob("*.json")]
+    
+    def delete(self, conversation_id: str) -> bool:
+        """Delete a conversation."""
+        filepath = self.storage_dir / f"{conversation_id}.json"
+        if filepath.exists():
+            filepath.unlink()
+            return True
+        return False
