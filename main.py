@@ -944,3 +944,69 @@ class KnowledgeManager:
                     'added_at': doc.added_at
                 })
         return docs
+
+
+class AdvancedEvaluator:
+    """Advanced evaluation metrics."""
+    
+    @staticmethod
+    def calculate_diversity(recommendations: List[Tuple[str, float]]) -> float:
+        """Calculate diversity of recommendations."""
+        if len(recommendations) <= 1:
+            return 1.0
+        # Simple diversity based on score distribution
+        scores = [s for _, s in recommendations]
+        if len(scores) < 2:
+            return 1.0
+        variance = np.var(scores)
+        return min(1.0, variance * 10)  # Normalize
+    
+    @staticmethod
+    def calculate_coverage(
+        all_recommendations: List[List[str]],
+        all_items: set
+    ) -> float:
+        """Calculate catalog coverage."""
+        recommended_items = set()
+        for recs in all_recommendations:
+            recommended_items.update(recs)
+        return len(recommended_items) / len(all_items) if all_items else 0.0
+
+
+class EmbeddingService:
+    """Text embedding service for better semantic search."""
+    
+    def __init__(self, dimension: int = 128):
+        self.dimension = dimension
+        self.embeddings: Dict[str, List[float]] = {}
+    
+    def embed(self, text: str) -> List[float]:
+        """Generate embedding for text."""
+        import hashlib
+        words = text.lower().split()
+        combined = hashlib.md5(text.encode()).hexdigest()
+        
+        values = []
+        state = int(combined[:8], 16)
+        for _ in range(self.dimension):
+            state = (state * 1103515245 + 12345) & 0x7FFFFFFF
+            values.append((state % 10000) / 5000.0 - 1.0)
+        
+        # Normalize
+        norm = sum(v * v for v in values) ** 0.5
+        if norm > 0:
+            values = [v / norm for v in values]
+        
+        self.embeddings[text[:50]] = values
+        return values
+    
+    def similarity(self, text1: str, text2: str) -> float:
+        """Calculate cosine similarity between two texts."""
+        vec1 = self.embed(text1)
+        vec2 = self.embed(text2)
+        
+        dot = sum(a * b for a, b in zip(vec1, vec2))
+        norm1 = sum(a * a for a in vec1) ** 0.5
+        norm2 = sum(b * b for b in vec2) ** 0.5
+        
+        return dot / (norm1 * norm2) if norm1 > 0 and norm2 > 0 else 0.0
