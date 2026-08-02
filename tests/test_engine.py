@@ -10,3 +10,17 @@ class TestModelProfiler:
         """Test training profiling."""
         profiler = ModelProfiler(engine)
         assert profiler.engine is not None
+
+
+class TestModelProfiler:
+    def test_profile_recommend(self, engine):
+        """Test recommendation profiling."""
+        from main import ModelProfiler
+        profiler = ModelProfiler(engine)
+        assert profiler.engine is not None
+    
+    def test_profile_train(self, engine):
+        """Test training profiling."""
+        from main import ModelProfiler
+        profiler = ModelProfiler(engine)
+        assert profiler.engine is not None
