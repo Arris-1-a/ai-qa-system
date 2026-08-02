@@ -110,3 +110,27 @@ async def health_check():
 @app.on_event("startup")
 async def startup():
     await qa_system.initialize()
+
+
+@app.get("/conversations")
+async def list_conversations(limit: int = 10):
+    """List recent conversations."""
+    conversations = qa_system.conversation_manager.list_conversations(limit)
+    return {"conversations": conversations}
+
+
+@app.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    """Get conversation details."""
+    state = qa_system.conversation_manager.get_state(conversation_id)
+    if state:
+        return state.to_dict()
+    raise HTTPException(status_code=404, detail="Conversation not found")
+
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation."""
+    if qa_system.conversation_manager.clear(conversation_id):
+        return {"status": "deleted"}
+    raise HTTPException(status_code=404, detail="Conversation not found")
