@@ -121,3 +121,27 @@ class TestConversationHistory:
             # Delete
             assert history.delete(conv_id)
             assert history.load(conv_id) is None
+
+
+class TestConversationHistory:
+    def test_save_and_load(self, qa):
+        """Test saving and loading conversation history."""
+        import tempfile
+        import os
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from main import ConversationHistory
+            history = ConversationHistory(tmpdir)
+            
+            conv_id = qa.conversation_manager.create()
+            history.save(conv_id, [{"question": "Hello", "answer": "Hi"}])
+            
+            loaded = history.load(conv_id)
+            assert loaded is not None
+            assert loaded['conversation_id'] == conv_id
+            
+            conversations = history.list_conversations()
+            assert len(conversations) == 1
+            
+            assert history.delete(conv_id)
+            assert history.load(conv_id) is None
